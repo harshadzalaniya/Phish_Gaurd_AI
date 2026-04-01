@@ -8,46 +8,40 @@ from datetime import datetime
 from rapidfuzz import fuzz
 from fpdf import FPDF
 
-# Safe TensorFlow import
+# Safe import for TensorFlow/Keras
 try:
     from tensorflow.keras.models import load_model
     from tensorflow.keras.preprocessing.text import Tokenizer
     from tensorflow.keras.preprocessing.sequence import pad_sequences
     TF_AVAILABLE = True
-except:
+except Exception:
     TF_AVAILABLE = False
-    st.error("TensorFlow/Keras not installed. Check requirements.txt on Streamlit Cloud.")
+    st.error("TensorFlow not loaded properly. Check requirements.txt")
 
 st.set_page_config(page_title="PhishGuard AI", page_icon="🔒", layout="wide")
 
 st.title("🔒 PhishGuard AI")
-st.caption("Advanced Phishing Detection System | Internship Project by Harshad")
+st.caption("URL + Email + SMS + Typo Squatting Detector")
+st.caption("College Internship Project by Harshad | Gujarat")
 
 # ====================== LOAD MODELS ======================
 @st.cache_resource
 def load_models():
     text_model = None
     try:
-        # Try .h5 first (recommended for Streamlit)
-        if TF_AVAILABLE:
-            text_model = load_model("phishguard_text_model.h5", compile=False)
-            st.success("✅ Email/SMS model (.h5) loaded successfully")
-    except Exception as e_h5:
-        try:
-            # Fallback to .keras
-            if TF_AVAILABLE:
-                text_model = load_model("phishguard_text_model.keras", compile=False)
-                st.warning("✅ Email/SMS model (.keras) loaded")
-        except Exception as e:
-            st.error(f"❌ Model loading failed: {str(e)}")
-            st.info("Tip: Make sure phishguard_text_model.h5 is in the root of your GitHub repo")
+        # We will use .h5 file (most stable on Streamlit Cloud)
+        text_model = load_model("phishguard_text_model.h5", compile=False)
+        st.success("✅ Email + SMS Model Loaded Successfully")
+    except Exception as e:
+        st.error(f"Model loading failed: {str(e)}")
+        st.info("Tip: Make sure phishguard_text_model.h5 is uploaded to GitHub root folder")
     
     url_model = joblib.load("phishguard_url_model.pkl")
     return url_model, text_model
 
 url_model, text_model = load_models()
 
-# ====================== HELPER FUNCTIONS (same as before) ======================
+# ====================== HELPER FUNCTIONS ======================
 def extract_url_features(url):
     features = {}
     ext = tldextract.extract(url)
@@ -62,6 +56,7 @@ def extract_url_features(url):
     features['num_digits'] = sum(c.isdigit() for c in url)
     features['num_special_chars'] = len(re.findall(r'[@&%#?=/]', url))
     features['subdomain_count'] = len(ext.subdomain.split('.')) if ext.subdomain else 0
+    
     try:
         w = whois.whois(ext.registered_domain)
         creation = w.creation_date[0] if isinstance(w.creation_date, list) else w.creation_date
@@ -83,22 +78,104 @@ def detect_typosquatting(domain):
 
 @st.cache_resource
 def get_tokenizer():
-    from tensorflow.keras.preprocessing.text import Tokenizer
-    return Tokenizer(num_words=10000)
+    tokenizer = Tokenizer(num_words=10000)
+    return tokenizer
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
 def predict_text(text):
     if not TF_AVAILABLE or text_model is None or tokenizer is None:
-        return 0.5
+        return 0.5  # fallback
     sequences = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(sequences, maxlen=300)
     prob = text_model.predict(padded, verbose=0)[0][0]
     return float(prob)
 
-# ====================== TABS (shortened for brevity - add your full tabs here) ======================
-# ... (You can keep the tabs from my previous full app.py)
+# ====================== SESSION STATE ======================
+if 'history' not in st.session_state:
+    st.session_state.history = []
 
-st.info("If you see model loading error, ensure **phishguard_text_model.h5** is uploaded to GitHub root.")
+# ====================== TABS ======================
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 URL Scanner", "✉️ Email Scanner", "📱 SMS Scanner", "🔍 Typo Squatting", "🔗 Hybrid Analyzer"])
 
-# Add your tabs (URL, Email, SMS, Typo, Hybrid) here - use the structure from previous message
+with tab1:
+    st.subheader("URL Phishing Detection")
+    url = st.text_input("Enter URL to check", placeholder="https://example.com")
+    if st.button("Scan URL", type="primary"):
+        if url:
+            with st.spinner("Analyzing URL..."):
+                is_typo, legit, score = detect_typosquatting(url)
+                if is_typo:
+                    st.error(f"🚨 TYPO SQUATTING DETECTED! Similar to {legit} ({score}%)")
+                
+                features = extract_url_features(url)
+                prob = url_model.predict_proba(features)[0][1]
+                if prob > 0.5:
+                    st.error(f"🚨 PHISHING URL (Confidence: {prob*100:.1f}%)")
+                else:
+                    st.success(f"✅ SAFE URL (Confidence: {(1-prob)*100:.1f}%)")
+                
+                st.session_state.history.append({"type": "URL", "input": url[:60], "result": "Phishing" if prob > 0.5 else "Safe", "conf": prob, "time": datetime.now().strftime("%H:%M")})
+
+with tab2:
+    st.subheader("Email Phishing Detection")
+    email_text = st.text_area("Paste Email Content", height=200)
+    if st.button("Analyze Email"):
+        if email_text.strip():
+            with st.spinner("Analyzing..."):
+                prob = predict_text(email_text)
+                if prob > 0.5:
+                    st.error(f"🚨 PHISHING EMAIL (Confidence: {prob*100:.1f}%)")
+                else:
+                    st.success(f"✅ LEGITIMATE EMAIL (Confidence: {(1-prob)*100:.1f}%)")
+
+with tab3:
+    st.subheader("SMS / Smishing Detection")
+    sms_text = st.text_area("Paste SMS Message", height=150)
+    if st.button("Analyze SMS"):
+        if sms_text.strip():
+            with st.spinner("Analyzing..."):
+                prob = predict_text(sms_text)
+                if prob > 0.5:
+                    st.error(f"🚨 SMISHING DETECTED (Confidence: {prob*100:.1f}%)")
+                else:
+                    st.success(f"✅ SAFE SMS (Confidence: {(1-prob)*100:.1f}%)")
+
+with tab4:
+    st.subheader("Typo Squatting Checker")
+    domain = st.text_input("Enter domain to check (e.g. go0gle.com)")
+    if st.button("Check Typo Squatting"):
+        if domain:
+            is_typo, legit, score = detect_typosquatting(domain)
+            if is_typo:
+                st.error(f"🚨 Possible typo of **{legit}** ({score}% similar)")
+            else:
+                st.success("✅ No typo squatting detected")
+
+with tab5:
+    st.subheader("Hybrid Analyzer (Email/SMS with URLs)")
+    hybrid = st.text_area("Paste full Email or SMS", height=200)
+    if st.button("Run Hybrid Analysis"):
+        if hybrid.strip():
+            with st.spinner("Running full analysis..."):
+                prob_text = predict_text(hybrid)
+                urls = re.findall(r'https?://\S+', hybrid)
+                if prob_text > 0.5:
+                    st.error(f"Text → PHISHING ({prob_text*100:.1f}%)")
+                else:
+                    st.success(f"Text → SAFE ({(1-prob_text)*100:.1f}%)")
+                if urls:
+                    st.write(f"**{len(urls)} URL(s) found**")
+                    for u in urls:
+                        f = extract_url_features(u)
+                        p = url_model.predict_proba(f)[0][1]
+                        st.write(f"`{u[:70]}...` → {'🚨 Phishing' if p > 0.5 else '✅ Safe'} ({p*100:.1f}%)")
+
+# ====================== SIDEBAR ======================
+st.sidebar.header("Scan History")
+for item in list(reversed(st.session_state.history))[:5]:
+    st.sidebar.write(f"{item['time']} | {item['type']}: {item['result']}")
+
+st.sidebar.info("Use examples from demo_phishing_examples.md")
+
+st.caption("Project kept exactly as per your requirements")
