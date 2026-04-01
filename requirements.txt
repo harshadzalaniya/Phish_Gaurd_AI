@@ -4,8 +4,10 @@ numpy
 scikit-learn
 xgboost
 joblib
-tensorflow
+tensorflow==2.15.0
+keras==2.15.0
 rapidfuzz
 tldextract
 python-whois
 fpdf2
+requests
