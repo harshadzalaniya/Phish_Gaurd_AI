@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+scikit-learn
+xgboost
+joblib
+tensorflow
+rapidfuzz
+tldextract
+python-whois
+fpdf2
