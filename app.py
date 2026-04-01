@@ -23,15 +23,15 @@ st.title("🔒 PhishGuard AI")
 st.caption("URL + Email + SMS + Typo Squatting Detector")
 st.caption("College Internship Project by Harshad | Gujarat")
 
-# ====================== LOAD MODELS ======================
+# ====================== LOAD MODELS (Silent Loading) ======================
 @st.cache_resource
 def load_models():
     text_model = None
     try:
         text_model = load_model("phishguard_text_model.h5", compile=False)
-        st.success("✅ Email + SMS Model Loaded")
-    except Exception as e:
-        st.error(f"Text model error: {str(e)}")
+        # Removed success message as per your request
+    except Exception:
+        pass  # Fail silently - no message shown to user
     
     url_model = joblib.load("phishguard_url_model.pkl")
     return url_model, text_model
@@ -60,21 +60,16 @@ def extract_url_features(url):
         features['domain_age_days'] = (datetime.now() - creation).days if creation else -1
     except:
         features['domain_age_days'] = -1
-    
     return pd.DataFrame([features])
 
-# Fix for XGBoost feature mismatch
 def get_aligned_features(url):
     df = extract_url_features(url)
-    # Get the exact feature order the model expects
-    expected_features = url_model.feature_names_in_ if hasattr(url_model, 'feature_names_in_') else None
-    
-    if expected_features is not None:
-        # Reorder columns to match training order + fill missing with 0
-        for col in expected_features:
+    if hasattr(url_model, 'feature_names_in_'):
+        expected = url_model.feature_names_in_
+        for col in expected:
             if col not in df.columns:
                 df[col] = 0
-        df = df[expected_features]  # Reorder exactly
+        df = df[expected]
     return df
 
 POPULAR_DOMAINS = ["google", "amazon", "microsoft", "apple", "paypal", "netflix", "facebook", 
@@ -120,7 +115,6 @@ with tab1:
                 if is_typo:
                     st.error(f"🚨 TYPO SQUATTING DETECTED! Similar to {legit} ({score}%)")
                 
-                # FIXED: Use aligned features
                 features = get_aligned_features(url)
                 prob = url_model.predict_proba(features)[0][1]
                 
@@ -181,21 +175,4 @@ with tab5:
                 prob_text = predict_text(hybrid)
                 urls = re.findall(r'https?://\S+', hybrid)
                 if prob_text > 0.5:
-                    st.error(f"Text → PHISHING ({prob_text*100:.1f}%)")
-                else:
-                    st.success(f"Text → SAFE ({(1-prob_text)*100:.1f}%)")
-                if urls:
-                    st.write(f"**Found {len(urls)} URL(s)**")
-                    for u in urls[:5]:
-                        f = get_aligned_features(u)
-                        p = url_model.predict_proba(f)[0][1]
-                        st.write(f"`{u[:70]}...` → {'🚨 Phishing' if p > 0.5 else '✅ Safe'} ({p*100:.1f}%)")
-
-# Sidebar
-st.sidebar.header("Recent Scans")
-for item in list(reversed(st.session_state.history))[:5]:
-    st.sidebar.write(f"{item['time']} | {item['type']}: {item['result']}")
-
-st.sidebar.info("Project logic unchanged - only feature alignment fixed for URL scanner.")
-
-st.caption("Deployed with minimal changes as per your request")
+                    st.error(f"Text
