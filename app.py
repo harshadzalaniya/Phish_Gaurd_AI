@@ -175,4 +175,21 @@ with tab5:
                 prob_text = predict_text(hybrid)
                 urls = re.findall(r'https?://\S+', hybrid)
                 if prob_text > 0.5:
-                    st.error(f"Text
+                    st.error(f"Text → PHISHING ({prob_text*100:.1f}%)")
+                else:
+                    st.success(f"Text → SAFE ({(1-prob_text)*100:.1f}%)")
+                if urls:
+                    st.write(f"**Found {len(urls)} URL(s)**")
+                    for u in urls[:5]:
+                        f = get_aligned_features(u)
+                        p = url_model.predict_proba(f)[0][1]
+                        st.write(f"`{u[:70]}...` → {'🚨 Phishing' if p > 0.5 else '✅ Safe'} ({p*100:.1f}%)")
+
+# ====================== SIDEBAR ======================
+st.sidebar.header("Recent Scans")
+for item in list(reversed(st.session_state.history))[:5]:
+    st.sidebar.write(f"{item['time']} | {item['type']}: {item['result']}")
+
+st.sidebar.info("Use examples from demo_phishing_examples.md")
+
+st.caption("Project logic kept exactly as you wanted")
