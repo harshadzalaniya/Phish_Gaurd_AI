@@ -8,11 +8,18 @@ from datetime import datetime
 from rapidfuzz import fuzz
 from fpdf import FPDF
 import io
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-# Page Configuration
+# Try to import TensorFlow/Keras safely
+try:
+    from tensorflow.keras.models import load_model
+    from tensorflow.keras.preprocessing.text import Tokenizer
+    from tensorflow.keras.preprocessing.sequence import pad_sequences
+    TF_AVAILABLE = True
+except ImportError:
+    TF_AVAILABLE = False
+    st.error("TensorFlow not installed properly. Check requirements.txt")
+
+# ====================== PAGE CONFIG ======================
 st.set_page_config(
     page_title="PhishGuard AI",
     page_icon="🔒",
@@ -20,14 +27,25 @@ st.set_page_config(
 )
 
 st.title("🔒 PhishGuard AI")
-st.caption("Advanced Phishing Detection System | URL + Email + SMS + Typo Squatting")
-st.caption("College Internship Project by Harshad | Gujarat")
+st.caption("Advanced Phishing Detection | URL + Email + SMS + Typo Squatting")
+st.caption("College Internship Project by Harshad | Gujarat, India")
 
 # ====================== LOAD MODELS ======================
 @st.cache_resource
 def load_models():
+    try:
+        # Prefer .h5 for better compatibility on Streamlit Cloud
+        text_model = load_model("phishguard_text_model.h5", compile=False)
+        st.success("✅ Text (Email/SMS) model loaded successfully")
+    except Exception as e:
+        try:
+            text_model = load_model("phishguard_text_model.keras", compile=False)
+            st.warning("Loaded from .keras (fallback)")
+        except Exception as e2:
+            st.error(f"Model loading failed: {str(e2)}")
+            text_model = None
+    
     url_model = joblib.load("phishguard_url_model.pkl")
-    text_model = load_model("phishguard_text_model.keras")
     return url_model, text_model
 
 url_model, text_model = load_models()
@@ -67,167 +85,111 @@ def detect_typosquatting(domain):
             return True, legit, score
     return False, None, 0
 
-# Simple tokenizer for text model (we'll reuse the same logic)
+# Simple tokenizer for text prediction
 @st.cache_resource
 def get_tokenizer():
-    # This is a simple fallback tokenizer. In production you can save tokenizer too.
     tokenizer = Tokenizer(num_words=10000)
     return tokenizer
 
 tokenizer = get_tokenizer()
 
 def predict_text(text):
+    if text_model is None or not TF_AVAILABLE:
+        return 0.5  # fallback
     sequences = tokenizer.texts_to_sequences([text])
     padded = pad_sequences(sequences, maxlen=300)
-    prediction = text_model.predict(padded, verbose=0)[0][0]
-    return prediction  # probability of being phishing (1 = phishing)
+    prob = text_model.predict(padded, verbose=0)[0][0]
+    return float(prob)
 
-# ====================== STREAMLIT APP ======================
+# ====================== SESSION STATE ======================
 if 'history' not in st.session_state:
     st.session_state.history = []
 
+# ====================== TABS ======================
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 URL Scanner", "✉️ Email Scanner", "📱 SMS Scanner", "🔍 Typo Squatting", "🔗 Hybrid Analyzer"])
 
-# ------------------- URL Scanner -------------------
 with tab1:
     st.subheader("URL Phishing Detection")
-    url = st.text_input("Enter URL to scan:", placeholder="https://www.example.com")
-    
-    if st.button("🔍 Scan URL", type="primary"):
+    url = st.text_input("Enter URL:", placeholder="https://www.hdfcbank.com")
+    if st.button("Scan URL", type="primary"):
         if url:
-            with st.spinner("Analyzing URL..."):
-                # Typo Squatting Check
-                is_typo, legit_domain, similarity = detect_typosquatting(url)
+            with st.spinner("Analyzing..."):
+                is_typo, legit, sim = detect_typosquatting(url)
                 if is_typo:
-                    st.error(f"🚨 **TYPO SQUATTING DETECTED!** Looks like {legit_domain} (Similarity: {similarity}%)")
+                    st.error(f"🚨 TYPO SQUATTING: Similar to {legit} ({sim}%)")
                 
-                # Feature Extraction & URL Model
-                features_df = extract_url_features(url)
-                prob = url_model.predict_proba(features_df)[0][1]
-                prediction = 1 if prob > 0.5 else 0
+                features = extract_url_features(url)
+                prob = url_model.predict_proba(features)[0][1]
+                result = "Phishing" if prob > 0.5 else "Safe"
+                color = "error" if prob > 0.5 else "success"
+                st.write(f"**Result:** :{color}[**{result}**] (Confidence: {prob*100:.1f}%)")
                 
-                if prediction == 1:
-                    st.error(f"🚨 **PHISHING URL DETECTED** (Confidence: {prob*100:.1f}%)")
-                    risk = "High"
-                else:
-                    st.success(f"✅ **SAFE URL** (Confidence: {(1-prob)*100:.1f}%)")
-                    risk = "Low"
-                
-                # Add to history
-                st.session_state.history.append({
-                    "type": "URL",
-                    "input": url,
-                    "result": "Phishing" if prediction == 1 else "Safe",
-                    "confidence": prob if prediction == 1 else (1-prob),
-                    "time": datetime.now().strftime("%Y-%m-%d %H:%M")
-                })
-        else:
-            st.warning("Please enter a URL")
+                st.session_state.history.append({"type": "URL", "input": url[:50], "result": result, "conf": prob, "time": datetime.now().strftime("%H:%M")})
 
-# ------------------- Email Scanner -------------------
 with tab2:
     st.subheader("Email Phishing Detection")
-    email_text = st.text_area("Paste Email Content:", height=200)
-    
+    email = st.text_area("Paste Email Text:", height=180)
     if st.button("Analyze Email"):
-        if email_text.strip():
-            with st.spinner("Analyzing Email..."):
-                prob = predict_text(email_text)
-                if prob > 0.5:
-                    st.error(f"🚨 **PHISHING EMAIL** (Confidence: {prob*100:.1f}%)")
-                else:
-                    st.success(f"✅ **LEGITIMATE EMAIL** (Confidence: {(1-prob)*100:.1f}%)")
-        else:
-            st.warning("Please paste email content")
+        if email.strip():
+            with st.spinner("Analyzing..."):
+                prob = predict_text(email)
+                result = "Phishing" if prob > 0.5 else "Legitimate"
+                st.write(f"**Result:** :{'error' if prob > 0.5 else 'success'}[**{result}**] ({prob*100:.1f}%)")
 
-# ------------------- SMS Scanner -------------------
 with tab3:
     st.subheader("SMS / Smishing Detection")
-    sms_text = st.text_area("Paste SMS Message:", height=150)
-    
+    sms = st.text_area("Paste SMS Message:", height=150)
     if st.button("Analyze SMS"):
-        if sms_text.strip():
-            with st.spinner("Analyzing SMS..."):
-                prob = predict_text(sms_text)
-                if prob > 0.5:
-                    st.error(f"🚨 **SMISHING (Phishing SMS) DETECTED** (Confidence: {prob*100:.1f}%)")
-                else:
-                    st.success(f"✅ **SAFE SMS** (Confidence: {(1-prob)*100:.1f}%)")
-        else:
-            st.warning("Please paste SMS text")
+        if sms.strip():
+            with st.spinner("Analyzing..."):
+                prob = predict_text(sms)
+                result = "Smishing" if prob > 0.5 else "Safe"
+                st.write(f"**Result:** :{'error' if prob > 0.5 else 'success'}[**{result}**] ({prob*100:.1f}%)")
 
-# ------------------- Typo Squatting -------------------
 with tab4:
     st.subheader("Typo Squatting Checker")
-    domain = st.text_input("Enter domain to check (e.g. go0gle.com):")
-    
-    if st.button("Check for Typo Squatting"):
+    domain = st.text_input("Enter domain (e.g. go0gle.com):")
+    if st.button("Check Typo"):
         if domain:
             is_typo, legit, score = detect_typosquatting(domain)
             if is_typo:
-                st.error(f"🚨 Possible Typo Squatting of **{legit}** (Similarity: {score}%)")
+                st.error(f"🚨 Possible typo of **{legit}** ({score}% similar)")
             else:
-                st.success("✅ No obvious typo squatting detected")
-        else:
-            st.warning("Please enter a domain")
+                st.success("✅ No typo squatting detected")
 
-# ------------------- Hybrid Analyzer -------------------
 with tab5:
-    st.subheader("Hybrid Analyzer (Email/SMS with URLs)")
-    hybrid_text = st.text_area("Paste full Email or SMS (with embedded URLs):", height=200)
-    
-    if st.button("Run Hybrid Analysis"):
-        if hybrid_text.strip():
-            with st.spinner("Performing full analysis..."):
-                # Text prediction
-                text_prob = predict_text(hybrid_text)
-                
-                # Extract URLs from text
-                urls = re.findall(r'https?://[^\s]+', hybrid_text)
-                
-                st.write("### Results:")
-                if text_prob > 0.5:
-                    st.error(f"Text Analysis: **PHISHING** ({text_prob*100:.1f}%)")
-                else:
-                    st.success(f"Text Analysis: **SAFE** ({(1-text_prob)*100:.1f}%)")
-                
+    st.subheader("Hybrid Analyzer")
+    text = st.text_area("Paste Email or SMS (with links):", height=200)
+    if st.button("Run Full Analysis"):
+        if text.strip():
+            with st.spinner("Running hybrid scan..."):
+                prob_text = predict_text(text)
+                urls = re.findall(r'https?://\S+', text)
+                st.write(f"**Text Analysis:** {'🚨 Phishing' if prob_text > 0.5 else '✅ Safe'} ({prob_text*100:.1f}%)")
                 if urls:
-                    st.write(f"**Found {len(urls)} URL(s)**")
-                    for u in urls:
-                        features = extract_url_features(u)
-                        url_prob = url_model.predict_proba(features)[0][1]
-                        st.write(f"URL: `{u}` → {'🚨 Phishing' if url_prob > 0.5 else '✅ Safe'} ({url_prob*100:.1f}%)")
-                else:
-                    st.info("No URLs found in the text.")
-        else:
-            st.warning("Please paste content")
+                    st.write(f"**{len(urls)} URL(s) found**")
+                    for u in urls[:3]:
+                        f = extract_url_features(u)
+                        p = url_model.predict_proba(f)[0][1]
+                        st.write(f"• `{u[:60]}...` → {'🚨 Phishing' if p > 0.5 else '✅ Safe'} ({p*100:.1f}%)")
 
-# ====================== SCAN HISTORY & PDF REPORT ======================
-st.sidebar.header("Scan History")
-if st.session_state.history:
-    for entry in reversed(st.session_state.history[-5:]):  # show last 5
-        st.sidebar.write(f"{entry['time']} | {entry['type']}: {entry['result']}")
+# ====================== SIDEBAR ======================
+st.sidebar.header("Recent Scans")
+for h in list(reversed(st.session_state.history))[:5]:
+    st.sidebar.write(f"{h['time']} | {h['type']}: {h['result']}")
 
-if st.sidebar.button("Download PDF Report"):
+if st.sidebar.button("📥 Download PDF Report"):
     if st.session_state.history:
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="PhishGuard AI - Scan Report", ln=1, align='C')
-        pdf.cell(200, 10, txt=f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=1)
-        pdf.ln(10)
-        
-        for entry in st.session_state.history:
-            pdf.cell(200, 10, txt=f"{entry['time']} - {entry['type']}: {entry['result']} ({entry['confidence']*100:.1f}%)", ln=1)
-        
-        pdf_output = pdf.output(dest='S').encode('latin-1')
-        st.sidebar.download_button(
-            label="📥 Download Report",
-            data=pdf_output,
-            file_name=f"PhishGuard_Report_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf"
-        )
-    else:
-        st.sidebar.warning("No scans yet!")
+        pdf.cell(200, 10, "PhishGuard AI Scan Report", ln=1, align='C')
+        for h in st.session_state.history:
+            pdf.cell(200, 10, f"{h['time']} - {h['type']}: {h['result']} ({h['conf']*100:.1f}%)", ln=1)
+        pdf_bytes = pdf.output(dest='S').encode('latin-1')
+        st.sidebar.download_button("Download Report", pdf_bytes, "PhishGuard_Report.pdf", "application/pdf")
 
-st.sidebar.info("Tip: Use demo examples from demo_phishing_examples.md")
+st.sidebar.info("📌 Use demo_phishing_examples.md for testing")
+
+# Footer
+st.caption("Deployed on Streamlit Community Cloud • Minimal & Clean for Internship Submission")
