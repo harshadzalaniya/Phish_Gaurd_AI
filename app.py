@@ -111,7 +111,6 @@ def get_phishing_score_and_reasons(text):
 
     text_lower = text.lower()
     
-    # Categorized Keywords with Weights
     critical_keywords = ["lottery", "you won", "jackpot", "reward claim", "won the $", "prize claim"]
     high_keywords = ["won", "winner", "reward", "prize", "claim now", "urgent", "immediately", 
                      "bank account", "account details", "verify now", "suspended", "locked"]
@@ -121,28 +120,23 @@ def get_phishing_score_and_reasons(text):
     reasons = []
     score_boost = 0.0
 
-    # Check critical keywords (very strong boost)
     for kw in critical_keywords:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Critical: {kw}")
             score_boost = max(score_boost, 0.45)
 
-    # High risk keywords
     for kw in high_keywords:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"High Risk: {kw}")
             score_boost = max(score_boost, 0.30)
 
-    # Medium risk keywords
     for kw in medium_keywords:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Medium: {kw}")
             score_boost = max(score_boost, 0.15)
 
-    # Model prediction
     model_prob = text_model.predict(tokenizer.texts_to_sequences([text]), verbose=0)[0][0]
 
-    # URL extraction and analysis
     urls = re.findall(r'https?://\S+', text)
     max_prob = max(model_prob, score_boost)
 
@@ -184,9 +178,14 @@ with tab1:
                 st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
                 
                 st.subheader("Why is this Phishing?")
-                if is_typo: st.write(f"🚨 Typo Squatting — looks like **{legit}**")
-                if not internet_ok: st.write("⚠️ Domain does not exist on the internet")
-                if features['has_https'].iloc[0] == 0: st.write("🔒 No HTTPS (insecure)")
+                if is_typo:
+                    st.write(f"🚨 Typo Squatting — looks like **{legit}**")
+                if not internet_ok:
+                    st.write("⚠️ Domain does not exist on the internet")
+                
+                # Safe check for has_https
+                if 'has_https' in features.columns and features['has_https'].iloc[0] == 0:
+                    st.write("🔒 No HTTPS (insecure)")
 
 with tab2:
     st.subheader("Email Phishing Detection")
@@ -238,4 +237,4 @@ with tab5:
                 for r in reasons:
                     st.write("• " + r)
 
-st.caption("Optimized keyword matching with categorized weights • Better accuracy for SMS & Email")
+st.caption("Fixed feature KeyError • Optimized keyword matching")
