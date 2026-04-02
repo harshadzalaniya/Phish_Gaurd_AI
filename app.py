@@ -24,7 +24,7 @@ st.set_page_config(page_title="PhishGuard AI", page_icon="🔒", layout="wide")
 st.markdown("""
     <h1 style='text-align: center; color: #FF4B4B;'>🔒 PhishGuard AI</h1>
     <p style='text-align: center; font-size: 1.1rem; color: #AAAAAA;'>
-        Advanced Multi-Layer Phishing Detector • URL + Email + SMS + Typo Squatting
+        Advanced Multi-Layer Phishing Detector
     </p>
     <p style='text-align: center; font-size: 0.95rem; color: #666666;'>
         College Internship Project by Harshad | Gujarat
@@ -45,7 +45,7 @@ def load_models():
 
 url_model, text_model = load_models()
 
-# ====================== CORE HELPER FUNCTIONS ======================
+# ====================== HELPER FUNCTIONS ======================
 def extract_url_features(url):
     features = {}
     ext = tldextract.extract(url)
@@ -104,8 +104,8 @@ def get_tokenizer():
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
-# ====================== OPTIMIZED KEYWORD MATCHING ======================
-def get_phishing_score_and_reasons(text):
+# ====================== FULL ANALYSIS FUNCTION ======================
+def full_text_analysis(text):
     if not TF_AVAILABLE or text_model is None or tokenizer is None:
         return 0.5, []
 
@@ -137,6 +137,7 @@ def get_phishing_score_and_reasons(text):
 
     model_prob = text_model.predict(tokenizer.texts_to_sequences([text]), verbose=0)[0][0]
 
+    # Extract URLs and analyze them
     urls = re.findall(r'https?://\S+', text)
     max_prob = max(model_prob, score_boost)
 
@@ -158,11 +159,12 @@ def get_phishing_score_and_reasons(text):
     final_prob = max(max_prob, model_prob + score_boost)
     return float(final_prob), reasons
 
-# ====================== TABS ======================
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 URL Scanner", "✉️ Email Scanner", "📱 SMS Scanner", "🔍 Typo Squatting", "🔗 Hybrid Analyzer"])
+# ====================== 3 TABS ONLY ======================
+tab1, tab2, tab3 = st.tabs(["🌐 URL Scanning", "✉️ Email Scanner", "🔗 Hybrid Scanner"])
 
+# ------------------- URL Scanning -------------------
 with tab1:
-    st.subheader("URL Phishing Detection")
+    st.subheader("URL Scanning")
     url = st.text_input("Enter URL to check", placeholder="http://amaz0n.com")
     if st.button("🔍 Scan URL", type="primary"):
         if url:
@@ -182,59 +184,41 @@ with tab1:
                     st.write(f"🚨 Typo Squatting — looks like **{legit}**")
                 if not internet_ok:
                     st.write("⚠️ Domain does not exist on the internet")
-                
-                # Safe check for has_https
                 if 'has_https' in features.columns and features['has_https'].iloc[0] == 0:
                     st.write("🔒 No HTTPS (insecure)")
 
+# ------------------- Email Scanner -------------------
 with tab2:
-    st.subheader("Email Phishing Detection")
+    st.subheader("Email Scanner")
     email_text = st.text_area("Paste Email Content", height=200)
     if st.button("Analyze Email"):
         if email_text.strip():
             with st.spinner("Full multi-layer analysis..."):
-                prob, reasons = get_phishing_score_and_reasons(email_text)
+                prob, reasons = full_text_analysis(email_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
                 st.subheader("Why is this Phishing?")
-                for r in reasons:
-                    st.write("• " + r)
+                if reasons:
+                    for r in reasons:
+                        st.write("• " + r)
+                else:
+                    st.write("No strong phishing indicators found.")
 
+# ------------------- Hybrid Scanner (All-in-One) -------------------
 with tab3:
-    st.subheader("SMS / Smishing Detection")
-    sms_text = st.text_area("Paste SMS Message", height=150)
-    if st.button("Analyze SMS"):
-        if sms_text.strip():
-            with st.spinner("Full multi-layer analysis..."):
-                prob, reasons = get_phishing_score_and_reasons(sms_text)
+    st.subheader("Hybrid Scanner (SMS + Email + URL + Typo Squatting)")
+    hybrid_text = st.text_area("Paste SMS / Email (can contain links)", height=220)
+    if st.button("Run Full Hybrid Analysis"):
+        if hybrid_text.strip():
+            with st.spinner("Performing complete multi-layer analysis..."):
+                prob, reasons = full_text_analysis(hybrid_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
-                st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
+                st.markdown(f"**Final Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
                 st.subheader("Why is this Phishing?")
-                for r in reasons:
-                    st.write("• " + r)
+                if reasons:
+                    for r in reasons:
+                        st.write("• " + r)
+                else:
+                    st.write("No strong phishing indicators found.")
 
-with tab4:
-    st.subheader("Typo Squatting Checker")
-    domain = st.text_input("Enter domain to check (e.g. g00gle.com)")
-    if st.button("Check Typo Squatting"):
-        if domain:
-            is_typo, legit, score = detect_typosquatting(domain)
-            if is_typo:
-                st.error(f"🚨 TYPO SQUATTING DETECTED — Looks like **{legit}** ({score}% similar)")
-            else:
-                st.success("✅ No typo squatting detected")
-
-with tab5:
-    st.subheader("Hybrid Analyzer")
-    hybrid = st.text_area("Paste Email or SMS (with links)", height=200)
-    if st.button("Run Hybrid Analysis"):
-        if hybrid.strip():
-            with st.spinner("Full multi-layer analysis..."):
-                prob, reasons = get_phishing_score_and_reasons(hybrid)
-                risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
-                st.markdown(f"**Final Risk:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
-                st.subheader("Why is this Phishing?")
-                for r in reasons:
-                    st.write("• " + r)
-
-st.caption("Fixed feature KeyError • Optimized keyword matching")
+st.caption("Simplified to 3 tabs • Hybrid now scans SMS + Email + URL + Typo Squatting automatically • Fixed reasons section")
