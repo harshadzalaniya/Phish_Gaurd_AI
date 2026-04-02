@@ -23,7 +23,7 @@ st.set_page_config(page_title="PhishGuard AI", page_icon="🔒", layout="wide")
 st.markdown("""
     <h1 style='text-align: center; color: #FF4B4B;'>🔒 PhishGuard AI</h1>
     <p style='text-align: center; font-size: 1.1rem; color: #AAAAAA;'>
-        Advanced Multi-Layer Phishing Detector with Intelligent AI Reasoning
+        Advanced Multi-Layer Phishing Detector with Real-Time Threat Intel + AI Reasoning
     </p>
     <p style='text-align: center; font-size: 0.95rem; color: #666666;'>
         College Internship Project by Harshad | Gujarat
@@ -44,7 +44,7 @@ def load_models():
 
 url_model, text_model = load_models()
 
-# Helper Functions (unchanged)
+# ====================== HELPER FUNCTIONS ======================
 def extract_url_features(url):
     features = {}
     ext = tldextract.extract(url)
@@ -97,13 +97,26 @@ def internet_url_check(url):
     except:
         return False, None
 
+# ====================== REAL-TIME THREAT INTEL (URLhaus) ======================
+def check_urlhaus_threat_intel(url):
+    try:
+        data = {"url": url}
+        response = requests.post("https://urlhaus.abuse.ch/api/", data=data, timeout=8)
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("query_status") == "ok" and result.get("threat"):
+                return True, result.get("threat", "malware")
+        return False, None
+    except:
+        return False, None
+
 @st.cache_resource
 def get_tokenizer():
     return Tokenizer(num_words=10000)
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
-# Full Analysis (same as before)
+# Full Analysis
 def full_text_analysis(text):
     if not TF_AVAILABLE or text_model is None or tokenizer is None:
         return 0.5, []
@@ -140,6 +153,7 @@ def full_text_analysis(text):
     for u in urls:
         is_typo, legit, score = detect_typosquatting(u)
         internet_ok, _ = internet_url_check(u)
+        threat_intel, threat_type = check_urlhaus_threat_intel(u)
         features = get_aligned_features(u)
         url_prob = url_model.predict_proba(features)[0][1]
 
@@ -149,49 +163,47 @@ def full_text_analysis(text):
         if not internet_ok:
             max_prob = max(max_prob, 0.92)
             reasons.append("Domain does not exist on internet")
+        if threat_intel:
+            max_prob = max(max_prob, 0.98)
+            reasons.append(f"Real-Time Threat Intel: Known {threat_type} on URLhaus")
         if url_prob > max_prob:
             max_prob = url_prob
 
     final_prob = max(max_prob, model_prob + score_boost)
     return float(final_prob), reasons
 
-# ==================== IMPROVED AI REASONING ====================
+# Dynamic AI Reasoning
 def generate_ai_explanation(text, prob, reasons):
     explanation = []
     
-    # Consistent Risk Level
     if prob > 0.75:
-        explanation.append("**High Risk** — This content exhibits strong characteristics of a phishing attack.")
+        explanation.append("**High Risk** — Strong evidence of phishing attack.")
     elif prob > 0.55:
-        explanation.append("**Moderate Risk** — Suspicious patterns are present.")
+        explanation.append("**Moderate Risk** — Suspicious patterns present.")
     else:
         explanation.append("**Low Risk** — The content appears legitimate.")
 
     if reasons:
-        explanation.append("\n**Detected Indicators:**")
+        explanation.append("\n**Detected Red Flags:**")
         for r in reasons[:8]:
             explanation.append("• " + r)
 
     text_lower = text.lower()
 
-    # Smart, accurate contextual analysis
     if "account has been suspended" in text_lower or "your account has been" in text_lower:
-        explanation.append("\n**AI Analysis:** The phrase 'account has been suspended' is a very common phishing tactic. It creates panic to make the victim click the link without thinking.")
+        explanation.append("\n**AI Analysis:** Claiming the account is suspended is a classic phishing tactic to create panic.")
 
     if "verify here" in text_lower or "verify now" in text_lower:
-        explanation.append("\n**AI Analysis:** 'Verify here/now' is a classic phishing call-to-action designed to trick users into visiting a malicious site.")
+        explanation.append("\n**AI Analysis:** 'Verify here/now' is a very common phishing call-to-action.")
 
     if ".ru" in text_lower or "google.com.ru" in text_lower:
-        explanation.append("\n**AI Analysis:** Using 'google.com.ru' is highly suspicious. Legitimate Google never uses the .ru TLD for customer communications.")
+        explanation.append("\n**AI Analysis:** .ru TLD on google.com is highly suspicious and not used by legitimate Google.")
 
     if any(kw in text_lower for kw in ["lottery", "jackpot", "you won", "reward claim"]):
-        explanation.append("\n**AI Analysis:** This is a classic 'lottery/reward' scam that exploits greed and urgency.")
+        explanation.append("\n**AI Analysis:** Classic lottery/reward scam exploiting greed.")
 
     if "bank account" in text_lower or "account details" in text_lower:
-        explanation.append("\n**AI Analysis:** Requesting bank account or personal details is a major red flag for financial phishing.")
-
-    if not reasons and prob < 0.55:
-        explanation.append("\n**AI Analysis:** No strong urgency, greed, or credential-harvesting language was detected.")
+        explanation.append("\n**AI Analysis:** Requesting bank details is a major financial phishing indicator.")
 
     return explanation
 
@@ -203,13 +215,15 @@ with tab1:
     url = st.text_input("Enter URL to check", placeholder="http://amaz0n.com")
     if st.button("🔍 Scan URL", type="primary"):
         if url:
-            with st.spinner("Analyzing..."):
+            with st.spinner("Analyzing with Real-Time Threat Intel..."):
                 is_typo, legit, score = detect_typosquatting(url)
                 internet_ok, _ = internet_url_check(url)
+                threat_intel, threat_type = check_urlhaus_threat_intel(url)
                 features = get_aligned_features(url)
                 prob = url_model.predict_proba(features)[0][1]
                 if is_typo: prob = max(prob, 0.95)
                 if not internet_ok: prob = max(prob, 0.90)
+                if threat_intel: prob = max(prob, 0.98)
                 
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
@@ -218,6 +232,7 @@ with tab1:
                 reasons = []
                 if is_typo: reasons.append(f"Typo Squatting — looks like **{legit}**")
                 if not internet_ok: reasons.append("Domain does not exist on the internet")
+                if threat_intel: reasons.append(f"Real-Time Threat Intel: Known {threat_type} (URLhaus)")
                 if 'has_https' in features.columns and features['has_https'].iloc[0] == 0:
                     reasons.append("No HTTPS (insecure)")
                 for r in reasons:
@@ -250,7 +265,7 @@ with tab3:
     hybrid_text = st.text_area("Paste SMS / Email (can contain links)", height=220)
     if st.button("Run Full Hybrid Analysis"):
         if hybrid_text.strip():
-            with st.spinner("Analyzing..."):
+            with st.spinner("Analyzing with Real-Time Threat Intel..."):
                 prob, reasons = full_text_analysis(hybrid_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Final Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
@@ -263,4 +278,4 @@ with tab3:
                 for line in generate_ai_explanation(hybrid_text, prob, reasons):
                     st.write(line)
 
-#st.caption("Improved AI reasoning logic • Consistent & accurate explanations")
+st.caption("Real-Time Threat Intel from URLhaus added • Dynamic AI reasoning")
