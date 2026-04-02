@@ -24,7 +24,7 @@ st.set_page_config(page_title="PhishGuard AI", page_icon="🔒", layout="wide")
 st.markdown("""
     <h1 style='text-align: center; color: #FF4B4B;'>🔒 PhishGuard AI</h1>
     <p style='text-align: center; font-size: 1.1rem; color: #AAAAAA;'>
-        Advanced Multi-Layer Phishing Detector with AI Reasoning
+        Advanced Multi-Layer Phishing Detector with Intelligent AI Reasoning
     </p>
     <p style='text-align: center; font-size: 0.95rem; color: #666666;'>
         College Internship Project by Harshad | Gujarat
@@ -104,34 +104,43 @@ def get_tokenizer():
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
-# ====================== AI POWERED REASONING ======================
+# ====================== ENHANCED AI REASONING ======================
 def generate_ai_explanation(text, prob, reasons, is_url=False, url_prob=None):
     explanation = []
     
-    if prob > 0.75:
-        explanation.append("**High Phishing Probability** - Multiple strong indicators detected.")
-    elif prob > 0.5:
-        explanation.append("**Moderate Risk** - Some suspicious patterns found.")
+    # Overall Assessment
+    if prob > 0.85:
+        explanation.append("**🔴 High Confidence Phishing Attempt** - This content shows multiple strong indicators of a sophisticated phishing attack.")
+    elif prob > 0.65:
+        explanation.append("**🟠 Moderate to High Risk** - The message contains several suspicious elements commonly used in phishing campaigns.")
+    elif prob > 0.4:
+        explanation.append("**🟡 Medium Risk** - Some red flags are present, but not definitive.")
     else:
-        explanation.append("**Low Risk** - No major red flags detected.")
+        explanation.append("**🟢 Low Risk** - The content appears legitimate based on current analysis.")
 
+    # Specific Analysis
     if reasons:
-        explanation.append("**Key Indicators:**")
-        for r in reasons[:6]:  # limit to top reasons
+        explanation.append("\n**Detected Indicators:**")
+        for r in reasons[:7]:
             explanation.append("• " + r)
 
-    # AI-like natural reasoning
-    if "lottery" in text.lower() or "you won" in text.lower() or "jackpot" in text.lower():
-        explanation.append("**AI Analysis:** This message uses classic 'reward/lottery' social engineering to create urgency and greed.")
+    # Intelligent Contextual Reasoning
+    text_lower = text.lower()
     
-    if any(word in text.lower() for word in ["bank account", "account details", "verify now"]):
-        explanation.append("**AI Analysis:** Requesting sensitive financial information is a major red flag used by phishing attacks.")
+    if any(word in text_lower for word in ["lottery", "jackpot", "you won", "won the $", "prize claim"]):
+        explanation.append("\n**AI Reasoning:** This is a classic 'reward scam' tactic. Attackers create excitement and urgency by promising large sums of money (e.g., lottery winnings) to trick victims into sharing personal or banking details.")
 
-    if is_url and url_prob and url_prob > 0.7:
-        explanation.append("**AI Analysis:** The embedded URL shows high risk based on structural features and domain analysis.")
+    if any(word in text_lower for word in ["bank account", "account details", "verify now", "enter the details"]):
+        explanation.append("\n**AI Reasoning:** Requesting sensitive information like bank account details is a major red flag. Legitimate organizations never ask for such information via unsolicited messages.")
 
-    if not explanation:
-        explanation.append("**AI Analysis:** The content appears legitimate with no suspicious patterns.")
+    if "urgent" in text_lower or "immediately" in text_lower or "limited time" in text_lower:
+        explanation.append("\n**AI Reasoning:** Use of urgency words (urgent, immediately, limited time) is a common psychological manipulation technique used in phishing to prevent the victim from thinking critically.")
+
+    if any(typ in text_lower for typ in ["g00gle", "amaz0n", "paypa1", "faceb00k"]):
+        explanation.append("\n**AI Reasoning:** The message contains a deliberately misspelled popular domain (typo-squatting), which is a well-known phishing technique to impersonate trusted brands.")
+
+    if not reasons and prob < 0.4:
+        explanation.append("\n**AI Reasoning:** No significant phishing patterns, urgency tactics, or suspicious links were detected. The message appears to be legitimate.")
 
     return explanation
 
@@ -210,19 +219,16 @@ with tab1:
                 
                 st.subheader("Why is this Phishing?")
                 reasons = []
-                if is_typo:
-                    reasons.append(f"Typo Squatting — looks like **{legit}**")
-                if not internet_ok:
-                    reasons.append("Domain does not exist on the internet")
+                if is_typo: reasons.append(f"Typo Squatting — looks like **{legit}**")
+                if not internet_ok: reasons.append("Domain does not exist on the internet")
                 if 'has_https' in features.columns and features['has_https'].iloc[0] == 0:
                     reasons.append("No HTTPS (insecure connection)")
                 
                 for r in reasons:
                     st.write("• " + r)
                 
-                # AI Explanation
-                ai_reasons = generate_ai_explanation(url, prob, reasons, is_url=True, url_prob=prob)
                 st.subheader("AI Reasoning")
+                ai_reasons = generate_ai_explanation(url, prob, reasons, is_url=True, url_prob=prob)
                 for line in ai_reasons:
                     st.write(line)
 
@@ -264,4 +270,4 @@ with tab3:
                 for line in ai_reasons:
                     st.write(line)
 
-st.caption("Real AI reasoning integrated • Hybrid Scanner analyzes SMS + Email + URL + Typo Squatting")
+st.caption("Enhanced AI Reasoning Engine • Hybrid Scanner analyzes everything together")
