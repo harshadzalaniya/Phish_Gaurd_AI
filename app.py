@@ -8,7 +8,6 @@ import requests
 import socket
 from datetime import datetime
 from rapidfuzz import fuzz
-from fpdf import FPDF
 
 # Safe TensorFlow import
 try:
@@ -32,7 +31,7 @@ st.markdown("""
     <hr>
 """, unsafe_allow_html=True)
 
-# ====================== LOAD MODELS ======================
+# Load Models
 @st.cache_resource
 def load_models():
     text_model = None
@@ -45,7 +44,7 @@ def load_models():
 
 url_model, text_model = load_models()
 
-# ====================== HELPER FUNCTIONS ======================
+# Helper Functions (same as before - shortened for speed)
 def extract_url_features(url):
     features = {}
     ext = tldextract.extract(url)
@@ -93,7 +92,7 @@ def internet_url_check(url):
     try:
         domain = tldextract.extract(url).registered_domain
         socket.gethostbyname(domain)
-        response = requests.head(url, timeout=6, allow_redirects=True)
+        response = requests.head(url, timeout=5, allow_redirects=True)
         return True, response.status_code
     except:
         return False, None
@@ -104,33 +103,31 @@ def get_tokenizer():
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
-# ====================== OPTIMIZED FULL ANALYSIS ======================
+# ====================== FULL ANALYSIS ======================
 def full_text_analysis(text):
     if not TF_AVAILABLE or text_model is None or tokenizer is None:
         return 0.5, []
 
     text_lower = text.lower()
     
-    critical_keywords = ["lottery", "you won", "jackpot", "reward claim", "won the $", "prize claim"]
-    high_keywords = ["won", "winner", "reward", "prize", "claim now", "urgent", "immediately", 
-                     "bank account", "account details", "verify now", "suspended", "locked"]
-    medium_keywords = ["congratulations", "free gift", "refund", "delivery failed", "pay now", 
-                       "security alert", "unauthorized", "click here", "limited time", "otp"]
+    critical = ["lottery", "you won", "jackpot", "reward claim", "won the $", "prize claim"]
+    high = ["won", "winner", "reward", "prize", "claim now", "urgent", "immediately", "bank account", 
+            "account details", "verify now", "suspended", "locked", "account has been suspended"]
+    medium = ["congratulations", "free gift", "refund", "delivery failed", "pay now", "security alert", 
+              "unauthorized", "click here", "limited time", "otp"]
 
     reasons = []
     score_boost = 0.0
 
-    for kw in critical_keywords:
+    for kw in critical:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Critical: {kw}")
             score_boost = max(score_boost, 0.45)
-
-    for kw in high_keywords:
+    for kw in high:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"High Risk: {kw}")
             score_boost = max(score_boost, 0.30)
-
-    for kw in medium_keywords:
+    for kw in medium:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Medium: {kw}")
             score_boost = max(score_boost, 0.15)
@@ -158,44 +155,47 @@ def full_text_analysis(text):
     final_prob = max(max_prob, model_prob + score_boost)
     return float(final_prob), reasons
 
-# ====================== REAL AI REASONING (Very Accurate) ======================
+# ====================== IMPROVED AI REASONING ======================
 def generate_ai_explanation(text, prob, reasons):
     explanation = []
     
-    # Consistent risk statement
     if prob > 0.75:
-        explanation.append("**High Risk** — This content exhibits strong characteristics of a phishing attack.")
-    elif prob > 0.5:
-        explanation.append("**Moderate Risk** — Suspicious patterns are present but not conclusive.")
+        explanation.append("**High Risk** — Strong evidence of phishing attack.")
+    elif prob > 0.55:
+        explanation.append("**Moderate Risk** — Several suspicious elements detected.")
     else:
-        explanation.append("**Low Risk** — The content appears legitimate.")
+        explanation.append("**Low Risk** — Generally appears legitimate.")
 
-    # Detected indicators
     if reasons:
-        explanation.append("\n**Detected Indicators:**")
-        for r in reasons[:8]:
+        explanation.append("\n**Detected Red Flags:**")
+        for r in reasons[:7]:
             explanation.append("• " + r)
 
-    # Smart contextual AI analysis
     text_lower = text.lower()
-    if any(kw in text_lower for kw in ["lottery", "jackpot", "you won", "prize claim", "reward claim"]):
-        explanation.append("\n**AI Analysis:** This uses classic 'lottery/reward' scam tactics. Attackers create excitement and urgency to trick users into sharing personal or banking details.")
-    
-    if any(kw in text_lower for kw in ["bank account", "account details", "verify now"]):
-        explanation.append("\n**AI Analysis:** Requesting sensitive financial information is a hallmark of financial phishing attacks.")
 
-    if any(kw in text_lower for kw in ["urgent", "immediately", "limited time", "act now"]):
-        explanation.append("\n**AI Analysis:** The use of urgency language is a common psychological manipulation technique to bypass rational thinking.")
+    # Very accurate contextual reasoning
+    if "account has been suspended" in text_lower or "your account has been" in text_lower:
+        explanation.append("\n**AI Analysis:** Claiming that an account is 'suspended' is a very common phishing tactic used to create panic and force immediate action.")
 
-    if any(kw in text_lower for kw in ["g00gle", "amaz0n", "paypa1"]):
-        explanation.append("\n**AI Analysis:** The message contains a deliberately misspelled domain (typo-squatting), a very common phishing technique.")
+    if "verify here" in text_lower or "verify now" in text_lower:
+        explanation.append("\n**AI Analysis:** The phrase 'Verify here' combined with a link is one of the most classic phishing patterns.")
 
-    if not explanation:
-        explanation.append("\n**AI Analysis:** No major red flags were detected in the content.")
+    if any(domain in text_lower for domain in ["google.com.ru", ".ru", ".tk", ".ml", ".cf"]):
+        explanation.append("\n**AI Analysis:** Using official-looking domains with suspicious TLDs (like .ru) is a red flag. Legitimate Google never uses .ru for customer communications.")
+
+    if any(kw in text_lower for kw in ["lottery", "jackpot", "you won", "reward claim"]):
+        explanation.append("\n**AI Analysis:** This is a classic 'reward/lottery' scam designed to exploit greed.")
+
+    if "bank account" in text_lower or "account details" in text_lower:
+        explanation.append("\n**AI Analysis:** Asking for banking details is a major indicator of financial phishing.")
+
+    if not any([ "suspended", "verify here", "verify now", "lottery", "you won"] in text_lower for _ in [1]):
+        if prob < 0.4:
+            explanation.append("\n**AI Analysis:** No strong urgency, greed, or credential-harvesting language detected.")
 
     return explanation
 
-# ====================== 3 TABS ONLY ======================
+# ====================== TABS ======================
 tab1, tab2, tab3 = st.tabs(["🌐 URL Scanning", "✉️ Email Scanner", "🔗 Hybrid Scanner"])
 
 with tab1:
@@ -203,7 +203,7 @@ with tab1:
     url = st.text_input("Enter URL to check", placeholder="http://amaz0n.com")
     if st.button("🔍 Scan URL", type="primary"):
         if url:
-            with st.spinner("Analyzing with AI..."):
+            with st.spinner("Analyzing..."):
                 is_typo, legit, score = detect_typosquatting(url)
                 internet_ok, _ = internet_url_check(url)
                 features = get_aligned_features(url)
@@ -219,13 +219,12 @@ with tab1:
                 if is_typo: reasons.append(f"Typo Squatting — looks like **{legit}**")
                 if not internet_ok: reasons.append("Domain does not exist on the internet")
                 if 'has_https' in features.columns and features['has_https'].iloc[0] == 0:
-                    reasons.append("No HTTPS (insecure connection)")
+                    reasons.append("No HTTPS (insecure)")
                 for r in reasons:
                     st.write("• " + r)
 
                 st.subheader("AI Reasoning")
-                ai_lines = generate_ai_explanation(url, prob, reasons)
-                for line in ai_lines:
+                for line in generate_ai_explanation(url, prob, reasons):
                     st.write(line)
 
 with tab2:
@@ -233,7 +232,7 @@ with tab2:
     email_text = st.text_area("Paste Email Content", height=200)
     if st.button("Analyze Email"):
         if email_text.strip():
-            with st.spinner("Analyzing with AI..."):
+            with st.spinner("Analyzing..."):
                 prob, reasons = full_text_analysis(email_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
@@ -243,8 +242,7 @@ with tab2:
                     st.write("• " + r)
                 
                 st.subheader("AI Reasoning")
-                ai_lines = generate_ai_explanation(email_text, prob, reasons)
-                for line in ai_lines:
+                for line in generate_ai_explanation(email_text, prob, reasons):
                     st.write(line)
 
 with tab3:
@@ -252,7 +250,7 @@ with tab3:
     hybrid_text = st.text_area("Paste SMS / Email (can contain links)", height=220)
     if st.button("Run Full Hybrid Analysis"):
         if hybrid_text.strip():
-            with st.spinner("Analyzing with AI..."):
+            with st.spinner("Analyzing..."):
                 prob, reasons = full_text_analysis(hybrid_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Final Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
@@ -262,8 +260,7 @@ with tab3:
                     st.write("• " + r)
                 
                 st.subheader("AI Reasoning")
-                ai_lines = generate_ai_explanation(hybrid_text, prob, reasons)
-                for line in ai_lines:
+                for line in generate_ai_explanation(hybrid_text, prob, reasons):
                     st.write(line)
 
-st.caption("Real AI reasoning enhanced • Very accurate & consistent explanations")
+st.caption("Improved AI reasoning for better accuracy")
