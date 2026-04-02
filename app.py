@@ -23,7 +23,7 @@ st.set_page_config(page_title="PhishGuard AI", page_icon="🔒", layout="wide")
 st.markdown("""
     <h1 style='text-align: center; color: #FF4B4B;'>🔒 PhishGuard AI</h1>
     <p style='text-align: center; font-size: 1.1rem; color: #AAAAAA;'>
-        Advanced Multi-Layer Phishing Detector with Real AI Reasoning
+        Advanced Multi-Layer Phishing Detector with Intelligent AI Reasoning
     </p>
     <p style='text-align: center; font-size: 0.95rem; color: #666666;'>
         College Internship Project by Harshad | Gujarat
@@ -44,7 +44,7 @@ def load_models():
 
 url_model, text_model = load_models()
 
-# Helper Functions
+# Helper Functions (unchanged)
 def extract_url_features(url):
     features = {}
     ext = tldextract.extract(url)
@@ -103,7 +103,7 @@ def get_tokenizer():
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
-# Full Analysis
+# Full Analysis (same as before)
 def full_text_analysis(text):
     if not TF_AVAILABLE or text_model is None or tokenizer is None:
         return 0.5, []
@@ -123,12 +123,10 @@ def full_text_analysis(text):
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Critical: {kw}")
             score_boost = max(score_boost, 0.45)
-
     for kw in high:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"High Risk: {kw}")
             score_boost = max(score_boost, 0.32)
-
     for kw in medium:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Medium: {kw}")
@@ -157,16 +155,17 @@ def full_text_analysis(text):
     final_prob = max(max_prob, model_prob + score_boost)
     return float(final_prob), reasons
 
-# Better AI Reasoning
+# ==================== IMPROVED AI REASONING ====================
 def generate_ai_explanation(text, prob, reasons):
     explanation = []
     
+    # Consistent Risk Level
     if prob > 0.75:
-        explanation.append("**High Risk** — This content shows strong signs of a phishing attempt.")
+        explanation.append("**High Risk** — This content exhibits strong characteristics of a phishing attack.")
     elif prob > 0.55:
-        explanation.append("**Moderate Risk** — Suspicious elements are present.")
+        explanation.append("**Moderate Risk** — Suspicious patterns are present.")
     else:
-        explanation.append("**Low Risk** — No major red flags detected.")
+        explanation.append("**Low Risk** — The content appears legitimate.")
 
     if reasons:
         explanation.append("\n**Detected Indicators:**")
@@ -175,20 +174,24 @@ def generate_ai_explanation(text, prob, reasons):
 
     text_lower = text.lower()
 
+    # Smart, accurate contextual analysis
     if "account has been suspended" in text_lower or "your account has been" in text_lower:
-        explanation.append("\n**AI Analysis:** The claim that 'your account has been suspended' is a very common phishing tactic designed to create fear and urgency.")
+        explanation.append("\n**AI Analysis:** The phrase 'account has been suspended' is a very common phishing tactic. It creates panic to make the victim click the link without thinking.")
 
     if "verify here" in text_lower or "verify now" in text_lower:
-        explanation.append("\n**AI Analysis:** The phrase 'Verify here/now' is a classic phishing call-to-action used to trick users into clicking malicious links.")
+        explanation.append("\n**AI Analysis:** 'Verify here/now' is a classic phishing call-to-action designed to trick users into visiting a malicious site.")
 
     if ".ru" in text_lower or "google.com.ru" in text_lower:
-        explanation.append("\n**AI Analysis:** Using 'google.com.ru' is highly suspicious. Legitimate Google services never use the .ru TLD for customer communications.")
+        explanation.append("\n**AI Analysis:** Using 'google.com.ru' is highly suspicious. Legitimate Google never uses the .ru TLD for customer communications.")
 
     if any(kw in text_lower for kw in ["lottery", "jackpot", "you won", "reward claim"]):
-        explanation.append("\n**AI Analysis:** This is a classic lottery/reward scam that exploits greed.")
+        explanation.append("\n**AI Analysis:** This is a classic 'lottery/reward' scam that exploits greed and urgency.")
 
     if "bank account" in text_lower or "account details" in text_lower:
-        explanation.append("\n**AI Analysis:** Requesting bank account details is a major red flag for financial phishing.")
+        explanation.append("\n**AI Analysis:** Requesting bank account or personal details is a major red flag for financial phishing.")
+
+    if not reasons and prob < 0.55:
+        explanation.append("\n**AI Analysis:** No strong urgency, greed, or credential-harvesting language was detected.")
 
     return explanation
 
@@ -260,4 +263,4 @@ with tab3:
                 for line in generate_ai_explanation(hybrid_text, prob, reasons):
                     st.write(line)
 
-st.caption("Fixed AI reasoning logic • Much more accurate & consistent")
+#st.caption("Improved AI reasoning logic • Consistent & accurate explanations")
