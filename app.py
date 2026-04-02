@@ -79,7 +79,7 @@ def get_aligned_features(url):
     return df
 
 POPULAR_DOMAINS = ["google", "amazon", "microsoft", "apple", "paypal", "netflix", "facebook", "instagram",
-                   "hdfcbank", "sbi", "icici", "axisbank", "bankofbaroda"]
+                   "hdfcbank", "sbi", "icici", "axisbank", "bankofbaroda", "paytm", "phonepe"]
 
 def detect_typosquatting(domain):
     domain = domain.lower().split('.')[0]
@@ -104,23 +104,47 @@ def get_tokenizer():
 
 tokenizer = get_tokenizer() if TF_AVAILABLE else None
 
-# ====================== FULL ANALYSIS FUNCTION (Used by Email, SMS & Hybrid) ======================
-def full_text_analysis(text):
+# ====================== OPTIMIZED KEYWORD MATCHING ======================
+def get_phishing_score_and_reasons(text):
     if not TF_AVAILABLE or text_model is None or tokenizer is None:
         return 0.5, []
 
     text_lower = text.lower()
-    phishing_keywords = ["won", "winner", "reward", "prize", "claim", "congratulations", "bank account",
-                         "account details", "verify now", "urgent", "immediately", "limited time", "click here",
-                         "password", "suspicious activity", "security alert", "lottery", "you won"]
+    
+    # Categorized Keywords with Weights
+    critical_keywords = ["lottery", "you won", "jackpot", "reward claim", "won the $", "prize claim"]
+    high_keywords = ["won", "winner", "reward", "prize", "claim now", "urgent", "immediately", 
+                     "bank account", "account details", "verify now", "suspended", "locked"]
+    medium_keywords = ["congratulations", "free gift", "refund", "delivery failed", "pay now", 
+                       "security alert", "unauthorized", "click here", "limited time", "otp"]
 
-    matched_keywords = [word for word in phishing_keywords if word in text_lower]
+    reasons = []
+    score_boost = 0.0
+
+    # Check critical keywords (very strong boost)
+    for kw in critical_keywords:
+        if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
+            reasons.append(f"Critical: {kw}")
+            score_boost = max(score_boost, 0.45)
+
+    # High risk keywords
+    for kw in high_keywords:
+        if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
+            reasons.append(f"High Risk: {kw}")
+            score_boost = max(score_boost, 0.30)
+
+    # Medium risk keywords
+    for kw in medium_keywords:
+        if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
+            reasons.append(f"Medium: {kw}")
+            score_boost = max(score_boost, 0.15)
+
+    # Model prediction
     model_prob = text_model.predict(tokenizer.texts_to_sequences([text]), verbose=0)[0][0]
 
-    # Extract URLs
+    # URL extraction and analysis
     urls = re.findall(r'https?://\S+', text)
-    max_prob = model_prob
-    reasons = matched_keywords[:]
+    max_prob = max(model_prob, score_boost)
 
     for u in urls:
         is_typo, legit, score = detect_typosquatting(u)
@@ -129,21 +153,20 @@ def full_text_analysis(text):
         url_prob = url_model.predict_proba(features)[0][1]
 
         if is_typo:
-            max_prob = max(max_prob, 0.95)
+            max_prob = max(max_prob, 0.96)
             reasons.append(f"Typo Squatting: looks like {legit}")
         if not internet_ok:
-            max_prob = max(max_prob, 0.90)
+            max_prob = max(max_prob, 0.92)
             reasons.append("Domain does not exist on internet")
         if url_prob > max_prob:
             max_prob = url_prob
 
-    final_prob = max(max_prob, 0.75 if len(matched_keywords) >= 2 else model_prob)
+    final_prob = max(max_prob, model_prob + score_boost)
     return float(final_prob), reasons
 
 # ====================== TABS ======================
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🌐 URL Scanner", "✉️ Email Scanner", "📱 SMS Scanner", "🔍 Typo Squatting", "🔗 Hybrid Analyzer"])
 
-# URL Scanner (already strong)
 with tab1:
     st.subheader("URL Phishing Detection")
     url = st.text_input("Enter URL to check", placeholder="http://amaz0n.com")
@@ -163,37 +186,34 @@ with tab1:
                 st.subheader("Why is this Phishing?")
                 if is_typo: st.write(f"🚨 Typo Squatting — looks like **{legit}**")
                 if not internet_ok: st.write("⚠️ Domain does not exist on the internet")
-                if features['has_https'].iloc[0] == 0: st.write("🔒 No HTTPS (insecure connection)")
+                if features['has_https'].iloc[0] == 0: st.write("🔒 No HTTPS (insecure)")
 
-# Email Scanner (Now fully smart)
 with tab2:
     st.subheader("Email Phishing Detection")
     email_text = st.text_area("Paste Email Content", height=200)
     if st.button("Analyze Email"):
         if email_text.strip():
             with st.spinner("Full multi-layer analysis..."):
-                prob, reasons = full_text_analysis(email_text)
+                prob, reasons = get_phishing_score_and_reasons(email_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
                 st.subheader("Why is this Phishing?")
                 for r in reasons:
                     st.write("• " + r)
 
-# SMS Scanner (Now fully smart)
 with tab3:
     st.subheader("SMS / Smishing Detection")
     sms_text = st.text_area("Paste SMS Message", height=150)
     if st.button("Analyze SMS"):
         if sms_text.strip():
             with st.spinner("Full multi-layer analysis..."):
-                prob, reasons = full_text_analysis(sms_text)
+                prob, reasons = get_phishing_score_and_reasons(sms_text)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Result:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
                 st.subheader("Why is this Phishing?")
                 for r in reasons:
                     st.write("• " + r)
 
-# Typo Squatting (unchanged)
 with tab4:
     st.subheader("Typo Squatting Checker")
     domain = st.text_input("Enter domain to check (e.g. g00gle.com)")
@@ -205,18 +225,17 @@ with tab4:
             else:
                 st.success("✅ No typo squatting detected")
 
-# Hybrid Analyzer (already powerful)
 with tab5:
     st.subheader("Hybrid Analyzer")
     hybrid = st.text_area("Paste Email or SMS (with links)", height=200)
     if st.button("Run Hybrid Analysis"):
         if hybrid.strip():
             with st.spinner("Full multi-layer analysis..."):
-                prob, reasons = full_text_analysis(hybrid)
+                prob, reasons = get_phishing_score_and_reasons(hybrid)
                 risk = "High" if prob > 0.7 else "Medium" if prob > 0.4 else "Low"
                 st.markdown(f"**Final Risk:** {'🔴 High Risk' if risk == 'High' else '🟠 Medium Risk' if risk == 'Medium' else '🟢 Low Risk'} (Confidence: {prob*100:.1f}%)")
                 st.subheader("Why is this Phishing?")
                 for r in reasons:
                     st.write("• " + r)
 
-st.caption("Now fully connected • SMS & Email automatically check embedded URLs + Typo Squatting + Internet verification")
+st.caption("Optimized keyword matching with categorized weights • Better accuracy for SMS & Email")
