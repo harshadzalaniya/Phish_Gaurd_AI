@@ -221,4 +221,4 @@ with tab3:
                 else:
                     st.write("No strong phishing indicators found.")
 
-st.caption("Simplified to 3 tabs • Hybrid now scans SMS + Email + URL + Typo Squatting automatically • Fixed reasons section")
+#st.caption("Simplified to 3 tabs • Hybrid now scans SMS + Email + URL + Typo Squatting automatically • Fixed reasons section")
