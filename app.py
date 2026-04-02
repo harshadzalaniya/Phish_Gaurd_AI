@@ -31,7 +31,7 @@ st.markdown("""
     <hr>
 """, unsafe_allow_html=True)
 
-# Load Models
+# ====================== LOAD MODELS ======================
 @st.cache_resource
 def load_models():
     text_model = None
@@ -44,7 +44,7 @@ def load_models():
 
 url_model, text_model = load_models()
 
-# Helper Functions (same as before - shortened for speed)
+# ====================== HELPER FUNCTIONS ======================
 def extract_url_features(url):
     features = {}
     ext = tldextract.extract(url)
@@ -92,7 +92,7 @@ def internet_url_check(url):
     try:
         domain = tldextract.extract(url).registered_domain
         socket.gethostbyname(domain)
-        response = requests.head(url, timeout=5, allow_redirects=True)
+        response = requests.head(url, timeout=6, allow_redirects=True)
         return True, response.status_code
     except:
         return False, None
@@ -110,24 +110,26 @@ def full_text_analysis(text):
 
     text_lower = text.lower()
     
-    critical = ["lottery", "you won", "jackpot", "reward claim", "won the $", "prize claim"]
-    high = ["won", "winner", "reward", "prize", "claim now", "urgent", "immediately", "bank account", 
-            "account details", "verify now", "suspended", "locked", "account has been suspended"]
-    medium = ["congratulations", "free gift", "refund", "delivery failed", "pay now", "security alert", 
-              "unauthorized", "click here", "limited time", "otp"]
+    critical_keywords = ["lottery", "you won", "jackpot", "reward claim", "won the $", "prize claim"]
+    high_keywords = ["won", "winner", "reward", "prize", "claim now", "urgent", "immediately", 
+                     "bank account", "account details", "verify now", "suspended", "locked", "account has been suspended"]
+    medium_keywords = ["congratulations", "free gift", "refund", "delivery failed", "pay now", 
+                       "security alert", "unauthorized", "click here", "limited time", "otp"]
 
     reasons = []
     score_boost = 0.0
 
-    for kw in critical:
+    for kw in critical_keywords:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Critical: {kw}")
             score_boost = max(score_boost, 0.45)
-    for kw in high:
+
+    for kw in high_keywords:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"High Risk: {kw}")
             score_boost = max(score_boost, 0.30)
-    for kw in medium:
+
+    for kw in medium_keywords:
         if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
             reasons.append(f"Medium: {kw}")
             score_boost = max(score_boost, 0.15)
@@ -155,47 +157,49 @@ def full_text_analysis(text):
     final_prob = max(max_prob, model_prob + score_boost)
     return float(final_prob), reasons
 
-# ====================== IMPROVED AI REASONING ======================
+# ====================== IMPROVED AI REASONING (Fixed) ======================
 def generate_ai_explanation(text, prob, reasons):
     explanation = []
     
+    # Risk Level
     if prob > 0.75:
         explanation.append("**High Risk** — Strong evidence of phishing attack.")
     elif prob > 0.55:
         explanation.append("**Moderate Risk** — Several suspicious elements detected.")
     else:
-        explanation.append("**Low Risk** — Generally appears legitimate.")
+        explanation.append("**Low Risk** — The content appears legitimate.")
 
+    # Detected Indicators
     if reasons:
         explanation.append("\n**Detected Red Flags:**")
-        for r in reasons[:7]:
+        for r in reasons[:8]:
             explanation.append("• " + r)
 
     text_lower = text.lower()
 
-    # Very accurate contextual reasoning
+    # Smart Contextual Analysis
     if "account has been suspended" in text_lower or "your account has been" in text_lower:
-        explanation.append("\n**AI Analysis:** Claiming that an account is 'suspended' is a very common phishing tactic used to create panic and force immediate action.")
+        explanation.append("\n**AI Analysis:** Claiming that the account is 'suspended' is a classic phishing tactic used to create panic and force the victim to click the link immediately.")
 
     if "verify here" in text_lower or "verify now" in text_lower:
-        explanation.append("\n**AI Analysis:** The phrase 'Verify here' combined with a link is one of the most classic phishing patterns.")
+        explanation.append("\n**AI Analysis:** The phrase 'Verify here/now' is one of the most common phishing call-to-action phrases.")
 
-    if any(domain in text_lower for domain in ["google.com.ru", ".ru", ".tk", ".ml", ".cf"]):
-        explanation.append("\n**AI Analysis:** Using official-looking domains with suspicious TLDs (like .ru) is a red flag. Legitimate Google never uses .ru for customer communications.")
+    if ".ru" in text_lower or "google.com.ru" in text_lower:
+        explanation.append("\n**AI Analysis:** Using 'google.com.ru' is highly suspicious. Legitimate Google never uses .ru TLD for official customer communication.")
 
     if any(kw in text_lower for kw in ["lottery", "jackpot", "you won", "reward claim"]):
-        explanation.append("\n**AI Analysis:** This is a classic 'reward/lottery' scam designed to exploit greed.")
+        explanation.append("\n**AI Analysis:** This is a classic 'lottery/reward' scam designed to exploit greed and urgency.")
 
     if "bank account" in text_lower or "account details" in text_lower:
-        explanation.append("\n**AI Analysis:** Asking for banking details is a major indicator of financial phishing.")
+        explanation.append("\n**AI Analysis:** Requesting banking or personal account details is a major indicator of financial phishing attacks.")
 
-    if not any([ "suspended", "verify here", "verify now", "lottery", "you won"] in text_lower for _ in [1]):
-        if prob < 0.4:
-            explanation.append("\n**AI Analysis:** No strong urgency, greed, or credential-harvesting language detected.")
+    # Fallback if nothing specific
+    if len(explanation) <= 2:
+        explanation.append("\n**AI Analysis:** No strong phishing patterns were detected in the provided text.")
 
     return explanation
 
-# ====================== TABS ======================
+# ====================== 3 TABS ======================
 tab1, tab2, tab3 = st.tabs(["🌐 URL Scanning", "✉️ Email Scanner", "🔗 Hybrid Scanner"])
 
 with tab1:
@@ -263,4 +267,4 @@ with tab3:
                 for line in generate_ai_explanation(hybrid_text, prob, reasons):
                     st.write(line)
 
-st.caption("Improved AI reasoning for better accuracy")
+st.caption("Fixed AI reasoning error • Much more accurate explanations")
